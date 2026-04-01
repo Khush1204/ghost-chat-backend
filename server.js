@@ -9,16 +9,7 @@ app.use(cors());
 
 const server = http.createServer(app);
 
-// 1. Create the Peer Server attached to your existing HTTP server
-const peerServer = ExpressPeerServer(server, {
-    debug: true,
-    path: '/' 
-});
-
-// 2. Tell Express to use the Peer Server at the /myapp endpoint
-app.use('/myapp', peerServer);
-
-// 3. Initialize Socket.io on the same server
+// 1. Socket.io with CORS for Vercel
 const io = new Server(server, {
   cors: {
     origin: "*", 
@@ -26,36 +17,41 @@ const io = new Server(server, {
   }
 });
 
-const usersInRooms = {}; 
+// 2. PeerJS Server mounted on /peerjs
+const peerServer = ExpressPeerServer(server, {
+  debug: true,
+  path: '/myapp'
+});
 
+app.use('/peerjs', peerServer);
+
+app.get('/', (req, res) => {
+  res.send('🚀 Ghost Chat Server is Live and Operational!');
+});
+
+// 3. Full Logic for Messaging & Rooms
 io.on('connection', (socket) => {
-  console.log(`🔌 New connection: ${socket.id}`);
-
   socket.on('join-room', ({ roomId, peerId, userName }) => {
     socket.join(roomId);
-    usersInRooms[socket.id] = { roomId, peerId, userName };
+    // Notify others
     socket.to(roomId).emit('user-joined', { peerId, senderName: userName });
-    console.log(`👤 ${userName} (${peerId}) joined room: ${roomId}`);
+
+    socket.on('disconnect', () => {
+      socket.to(roomId).emit('user-left', { peerId, userName });
+    });
   });
 
   socket.on('send-message', (data) => {
-    socket.to(data.roomId).emit('receive-message', data);
-  });
-
-  socket.on('disconnect', () => {
-    const userData = usersInRooms[socket.id];
-    if (userData) {
-      const { roomId, peerId, userName } = userData;
-      io.to(roomId).emit('user-left', { peerId, userName });
-      delete usersInRooms[socket.id];
-      console.log(`👻 ${userName} left room: ${roomId}`);
+    // Check for read receipts or standard messages
+    if (data.type === 'read-receipt') {
+      socket.to(data.roomId).emit('receive-message', data);
+    } else {
+      socket.to(data.roomId).emit('receive-message', data);
     }
   });
 });
 
-// --- Start your server ---
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`🚀 Unified Server running on port ${PORT}`);
-  console.log(`📡 PeerJS Path: http://localhost:${PORT}/myapp`);
+  console.log(`✅ Backend running on port ${PORT}`);
 });
