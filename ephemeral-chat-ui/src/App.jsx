@@ -4,7 +4,9 @@ import Peer from 'peerjs';
 import { Send, Video, Phone, MonitorUp, Paperclip, Sticker, User, VideoOff, MicOff, Check, CheckCheck } from 'lucide-react';
 import './App.css';
 
-const socket = io('http://127.0.0.1:3001');
+const socket = io('https://ghost-chat-server.onrender.com', {
+  transports: ['websocket', 'polling']
+});
 const STICKERS = ['🚀', '👻', '💀', '👽', '🍕', '🎉', '🔥', '💯'];
 // Helper for rendering multiple video streams
 const RemoteVideoPlayer = ({ stream, name }) => {
@@ -56,9 +58,10 @@ function App() {
   const initMesh = () => {
     // Look at your own backend instead of 0.peerjs.com
     const peer = new Peer({
-  host: '127.0.0.1', // Changed from localhost
-  port: 3001,
+  host: 'ghost-chat-server.onrender.com', // CRITICAL: Remove the "https://" part!
+  port: 443,                              // CRITICAL: Must be 443 for the live web
   path: '/myapp',
+  secure: true,                           // CRITICAL: Required for webcams to work
   config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
 });
     
