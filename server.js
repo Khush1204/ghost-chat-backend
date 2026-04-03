@@ -1,57 +1,57 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { ExpressPeerServer } = require('peer');
 const cors = require('cors');
 
 const app = express();
 app.use(cors());
 
 const server = http.createServer(app);
-
-// 1. Socket.io with CORS for Vercel
 const io = new Server(server, {
   cors: {
-    origin: "*", 
-    methods: ["GET", "POST"]
+    // ❌ DO NOT USE "*"
+    // ✅ Use your EXACT Vercel URL
+    origin: "https://ghost-chat-ui.vercel.app", 
+    methods: ["GET", "POST"],
+    credentials: true 
   }
 });
 
-// 2. PeerJS Server mounted on /peerjs
-const peerServer = ExpressPeerServer(server, {
-  debug: true,
-  path: '/myapp'
-});
+// Track users in memory
+const rooms = {};
 
-app.use('/peerjs', peerServer);
+app.get('/', (req, res) => res.send('👻 Ghost Server: Node Engine Active'));
 
-app.get('/', (req, res) => {
-  res.send('🚀 Ghost Chat Server is Live and Operational!');
-});
-
-// 3. Full Logic for Messaging & Rooms
 io.on('connection', (socket) => {
+  console.log(`⚡ New Device: ${socket.id}`);
+
   socket.on('join-room', ({ roomId, peerId, userName }) => {
     socket.join(roomId);
-    // Notify others
-    socket.to(roomId).emit('user-joined', { peerId, senderName: userName });
+    if (!rooms[roomId]) rooms[roomId] = [];
+    rooms[roomId].push({ peerId, userName, socketId: socket.id });
 
-    socket.on('disconnect', () => {
-      socket.to(roomId).emit('user-left', { peerId, userName });
-    });
+    console.log(`✅ ${userName} joined ${roomId}`);
+
+    // Tell everyone else someone joined
+    socket.to(roomId).emit('user-joined', { peerId, senderName: userName });
+    
+    // Send the current member list back to the person who just joined
+    socket.emit('get-active-members', rooms[roomId]);
   });
 
   socket.on('send-message', (data) => {
-    // Check for read receipts or standard messages
-    if (data.type === 'read-receipt') {
-      socket.to(data.roomId).emit('receive-message', data);
-    } else {
-      socket.to(data.roomId).emit('receive-message', data);
+    io.to(data.roomId).emit('receive-message', data);
+  });
+
+  socket.on('disconnect', () => {
+    // Cleanup room tracking on disconnect
+    for (const roomId in rooms) {
+      rooms[roomId] = rooms[roomId].filter(user => user.socketId !== socket.id);
+      io.to(roomId).emit('update-members', rooms[roomId]);
     }
+    console.log(`❌ Device Left: ${socket.id}`);
   });
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`✅ Backend running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`🚀 Ghost Engine live on ${PORT}`));
